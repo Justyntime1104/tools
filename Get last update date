@@ -1,0 +1,51 @@
+Write-Output "<-Start Result->"
+
+try {
+    Write-Host "Checking Last Windows Update Installation Attempt"
+    Write-Host "--------------------------------------------------"
+
+    # Define the relevant Event IDs for Windows Update installations
+    $EventIDs = @(19, 20) # 19 = Successful install, 20 = Failed install
+    $updateSource = "Microsoft-Windows-WindowsUpdateClient"
+
+    # Retrieve the most recent relevant update installation event
+    $lastUpdateEvent = Get-WinEvent -LogName System -MaxEvents 100 -ErrorAction Stop `
+        | Where-Object { $_.ProviderName -eq $updateSource -and $_.Id -in $EventIDs }
+
+    if ($lastUpdateEvent) {
+        # Extract the time of the last update installation attempt
+        $lastUpdateAttempt = $lastUpdateEvent.TimeCreated
+
+        # Format the date nicely
+        $formattedDate = $lastUpdateAttempt.ToString("MMMM dd, yyyy 'at' hh:mm tt")
+
+        # Prepare the value to write to the registry
+        $udfValue = "Last Windows Update Installation Attempt:`n$formattedDate"
+
+        # Write to UDF 5 in the registry
+        Set-ItemProperty -Path "HKLM:\Software\CentraStage" -Name Custom5 -Value $udfValue
+
+        # Check if it's been over 30 days
+        $daysSinceLastUpdate = (New-TimeSpan -Start $lastUpdateAttempt -End (Get-Date)).Days
+        if ($daysSinceLastUpdate -gt 30) {
+            Write-Output "Error - Last Windows Update installation was over 30 days ago: $formattedDate"
+            Write-Output "<-End Result->"
+            exit 1
+        }
+
+        # Success message
+        Write-Output "Success - Last Windows Update installation attempt: $formattedDate"
+    } else {
+        Write-Output "Error - No Windows Update installation events were found."
+        Write-Output "<-End Result->"
+        exit 1
+    }
+
+    Write-Output "<-End Result->"
+    exit 0
+}
+catch {
+    Write-Output "Error - Script failed unexpectedly: $_"
+    Write-Output "<-End Result->"
+    exit 1
+}
